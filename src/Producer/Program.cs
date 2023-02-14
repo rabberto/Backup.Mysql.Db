@@ -1,60 +1,82 @@
-﻿// See https://aka.ms/new-console-template for more information
+﻿using Backup.Mysql.Db.Producer.Config;
+using Backup.Mysql.Db.Producer.Helpers;
 using MySql.Data.MySqlClient;
 using MySQLBackupNetCore;
+using System.IO.Compression;
 
-Console.WriteLine("Hello, World!");
+LogService.Write("Start job");
+var listDataBase = AppSettings.DataBase;
+var connectionString = AppSettings.ConnectionString;
+var pathBackup = AppSettings.FolderBackup;
+var folderBackupSubmit = AppSettings.FolderBackupSubmit;
 
-String servidor = "192.99.241.251";
-String usuario = "developer";
-String senha = "JMzut6j8$Az$";
-String banco = "db-backup-test";
-String local = "c:/temp";
+LogService.Write($"connectionString: {connectionString}");
+LogService.Write($"pathBackup: {pathBackup}");
 
-//faz a leitura do arquivo config.dat e captura o valor de cada linha.
-//int contador = 0;
-//string linha;
-//System.IO.StreamReader file = new System.IO.StreamReader(@"config.dat");
-//while ((linha = file.ReadLine()) != null)
-//{
-//    if (contador == 0) servidor = linha;
-//    if (contador == 1) usuario = linha;
-//    if (contador == 2) senha = linha;
-//    if (contador == 3) banco = linha;
-//    if (contador == 4) local = linha;
-//    contador++;
-//}
-//file.Close();
-// fim da leitura do arquivo.
+if (!Directory.Exists(pathBackup))
+    Directory.CreateDirectory(pathBackup);
 
-string constring = "server=" + servidor + ";user=" + usuario + ";pwd=" + senha + ";database=" + banco + ";";
-Console.Write(constring);
+if (!Directory.Exists(pathBackup))
+    Directory.CreateDirectory(pathBackup);
 
-constring += "charset=utf8;convertzerodatetime=true;";
-
-// define o nome do arquivo de backup de acordo com a data e hora.
-string dia = DateTime.Now.Day.ToString();
-string mes = DateTime.Now.Month.ToString();
-string ano = DateTime.Now.Year.ToString();
-string hora = DateTime.Now.ToLongTimeString().Replace(":", "");
-string nomeDoArquivo = ano + mes + dia + "_" + hora;
-// fim
-
-// gera o conteúdo do arquivo de backup e salva no local definido no config.dat
-string arquivo = local + "\\" + nomeDoArquivo + ".sql";
-using (MySqlConnection conn = new MySqlConnection(constring))
+foreach (var dataBase in listDataBase)
 {
-    conn.Close();
-    using (MySqlCommand cmd = new MySqlCommand())
+    string fileName = CreatedFileName(dataBase);
+    LogService.Write($"fileName: {fileName}");
+
+    string fullPath = $"{pathBackup}{fileName}.sql";
+    LogService.Write($"fullPath: {fullPath}");
+
+    connectionString = string.Format(connectionString, dataBase);
+    LogService.Write($"connectionString: {connectionString}");
+
+    var pathZip = $"{folderBackupSubmit}{fileName}.zip";
+    LogService.Write($"pathZip: {pathZip}");
+
+    using (MySqlConnection conn = new MySqlConnection(connectionString))
     {
-        using (MySqlBackup mb = new MySqlBackup(cmd))
+        try
         {
-            cmd.Connection = conn;
-            conn.Open();
-            var dbs = conn.GetSchema();
-            Console.Write(dbs);
-            mb.ExportToFile(arquivo);
             conn.Close();
+            using (MySqlCommand cmd = new MySqlCommand())
+            {
+                using (MySqlBackup mb = new MySqlBackup(cmd))
+                {
+                    cmd.Connection = conn;
+                    conn.Open();
+                    mb.ExportToFile(fullPath);
+                    conn.Close();
+                }
+            }
+
+            LogService.Write($"End Backup: {dataBase}");
+
+            ZipFile.CreateFromDirectory(pathBackup, pathZip);
+            LogService.Write($"Zip File: {pathZip}");
+
+            File.Delete(fullPath);
+            LogService.Write($"Delete File: {fullPath}");
+
+        }
+        catch (MySqlException ex)
+        {
+            LogService.Write($"ERROR: {nameof(MySqlException)} | {ex.Message}");
+        }
+        catch (Exception ex)
+        {
+            LogService.Write($"ERROR: {nameof(Exception)} | {ex.Message}");
         }
     }
 }
-// fim
+
+//var files = Directory.GetFiles(folderBackupSubmit).Select(f => f.);
+//foreach (var file in files)
+//{
+//    file.d
+//}
+
+LogService.Write($"End Job");
+Console.ReadKey();
+
+string CreatedFileName(string dataBase)
+    => $"{dataBase}_{DateTime.Now.Year.ToString().PadLeft(4, '0')}{DateTime.Now.Month.ToString().PadLeft(2, '0')}{DateTime.Now.Day.ToString().PadLeft(2, '0')}";
