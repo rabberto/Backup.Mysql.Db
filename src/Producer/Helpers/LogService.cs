@@ -36,6 +36,6 @@ namespace Backup.Mysql.Db.Producer.Helpers
         }
 
         private static string BuilderFilePath(string path)
-            => $"{path}log{DateTime.Now.Year}{DateTime.Now.Month}{DateTime.Now.Day}.txt";
+            => $"{path}{nameof(Backup.Mysql.Db.Producer)}_{DateTime.Now.Year}{DateTime.Now.Month}{DateTime.Now.Day}.txt";
     }
 }

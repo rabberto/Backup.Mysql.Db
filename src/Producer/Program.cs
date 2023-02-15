@@ -4,79 +4,128 @@ using MySql.Data.MySqlClient;
 using MySQLBackupNetCore;
 using System.IO.Compression;
 
-LogService.Write("Start job");
+LogService.Write($"START:  {nameof(Program)}");
+
 var listDataBase = AppSettings.DataBase;
 var connectionString = AppSettings.ConnectionString;
 var pathBackup = AppSettings.FolderBackup;
 var folderBackupSubmit = AppSettings.FolderBackupSubmit;
+var dateTimeString = CreateDateTime();
 
-LogService.Write($"connectionString: {connectionString}");
-LogService.Write($"pathBackup: {pathBackup}");
-
-if (!Directory.Exists(pathBackup))
-    Directory.CreateDirectory(pathBackup);
+LogService.Write($"INFO: connectionString: {connectionString}");
+LogService.Write($"INFO: pathBackup: {pathBackup}");
 
 if (!Directory.Exists(pathBackup))
     Directory.CreateDirectory(pathBackup);
 
-foreach (var dataBase in listDataBase)
+if (!Directory.Exists(pathBackup))
+    Directory.CreateDirectory(pathBackup);
+
+LogService.Write($"START: {nameof(Program)}.{nameof(CreateBackup)}");
+CreateBackup();
+LogService.Write($"END: {nameof(Program)}.{nameof(CreateBackup)}");
+
+LogService.Write($"START: {nameof(Program)}.{nameof(ZipFiles)}");
+ZipFiles();
+LogService.Write($"END: {nameof(Program)}.{nameof(ZipFiles)}");
+
+LogService.Write($"START: {nameof(Program)}.{nameof(DeleteSqlFiles)}");
+DeleteSqlFiles();
+LogService.Write($"END: {nameof(Program)}.{nameof(DeleteOldFiles)}");
+
+LogService.Write($"START: {nameof(Program)}.{nameof(DeleteOldFiles)}");
+DeleteOldFiles();
+LogService.Write($"END: {nameof(Program)}.{nameof(DeleteOldFiles)}");
+
+LogService.Write($"END:  {nameof(Program)}");
+
+void CreateBackup()
 {
-    string fileName = CreatedFileName(dataBase);
-    LogService.Write($"fileName: {fileName}");
-
-    string fullPath = $"{pathBackup}{fileName}.sql";
-    LogService.Write($"fullPath: {fullPath}");
-
-    connectionString = string.Format(connectionString, dataBase);
-    LogService.Write($"connectionString: {connectionString}");
-
-    var pathZip = $"{folderBackupSubmit}{fileName}.zip";
-    LogService.Write($"pathZip: {pathZip}");
-
-    using (MySqlConnection conn = new MySqlConnection(connectionString))
+    foreach (var dataBase in listDataBase)
     {
-        try
+        string fileName = $"{dataBase}_{dateTimeString}";
+        LogService.Write($"INFO: fileName: {fileName}");
+
+        string fullPath = $"{pathBackup}{fileName}.sql";
+        LogService.Write($"INFO: fullPath: {fullPath}");
+
+        connectionString = string.Format(connectionString, dataBase);
+        LogService.Write($"INFO: connectionString: {connectionString}");
+
+        using (MySqlConnection conn = new MySqlConnection(connectionString))
         {
-            conn.Close();
-            using (MySqlCommand cmd = new MySqlCommand())
+            try
             {
-                using (MySqlBackup mb = new MySqlBackup(cmd))
+                LogService.Write($"START: {nameof(Program)}.{nameof(CreateBackup)} | DataBase: {dataBase}");
+                conn.Close();
+                using (MySqlCommand cmd = new MySqlCommand())
                 {
-                    cmd.Connection = conn;
-                    conn.Open();
-                    mb.ExportToFile(fullPath);
-                    conn.Close();
+                    using (MySqlBackup mb = new MySqlBackup(cmd))
+                    {
+                        cmd.Connection = conn;
+                        conn.Open();
+                        mb.ExportToFile(fullPath);
+                        conn.Close();
+                    }
                 }
+                LogService.Write($"END: {nameof(Program)}.{nameof(CreateBackup)} | DataBase: {dataBase}");
             }
-
-            LogService.Write($"End Backup: {dataBase}");
-
-            ZipFile.CreateFromDirectory(pathBackup, pathZip);
-            LogService.Write($"Zip File: {pathZip}");
-
-            File.Delete(fullPath);
-            LogService.Write($"Delete File: {fullPath}");
-
-        }
-        catch (MySqlException ex)
-        {
-            LogService.Write($"ERROR: {nameof(MySqlException)} | {ex.Message}");
-        }
-        catch (Exception ex)
-        {
-            LogService.Write($"ERROR: {nameof(Exception)} | {ex.Message}");
+            catch (MySqlException ex)
+            {
+                LogService.Write($"ERROR: {nameof(Program)}.{nameof(MySqlException)} | {ex.Message}");
+            }
+            catch (Exception ex)
+            {
+                LogService.Write($"ERROR: {nameof(Program)}.{nameof(Exception)} | {ex.Message}");
+            }
         }
     }
 }
 
-//var files = Directory.GetFiles(folderBackupSubmit).Select(f => f.);
-//foreach (var file in files)
-//{
-//    file.d
-//}
+void ZipFiles()
+{
+    try
+    {
+        var pathZip = $"{folderBackupSubmit}RBBSolucoes_{dateTimeString}.zip";
 
-LogService.Write($"End Job");
-Console.ReadKey();
+        ZipFile.CreateFromDirectory(pathBackup, pathZip);
 
-string CreatedFileName(string dataBase)
-    => $"{dataBase}_{DateTime.Now.Year.ToString().PadLeft(4, '0')}{DateTime.Now.Month.ToString().PadLeft(2, '0')}{DateTime.Now.Day.ToString().PadLeft(2, '0')}";
+    }
+    catch (Exception ex)
+    {
+        LogService.Write($"ERROR: {nameof(Program)}.{nameof(ZipFiles)} | {ex.Message}");
+    }
+}
+
+void DeleteSqlFiles()
+{
+    try
+    {
+        var filesDelete = Directory.GetFiles(pathBackup);
+        foreach (var fileDelete in filesDelete)
+            File.Delete(fileDelete);
+    }
+    catch (Exception ex)
+    {
+        LogService.Write($"ERROR: {nameof(Program)}.{nameof(DeleteSqlFiles)} | {ex.Message}");
+    }
+}
+
+void DeleteOldFiles()
+{
+    try
+    {
+        DirectoryInfo directoryInfo = new DirectoryInfo(folderBackupSubmit);
+
+        foreach (FileInfo file in directoryInfo.GetFiles())
+            if (DateTime.Now.Subtract(file.LastWriteTime).Days > 5)
+                file.Delete();
+    }
+    catch (Exception ex)
+    {
+        LogService.Write($"ERROR: {nameof(Program)}.{nameof(DeleteOldFiles)} | {ex.Message}");
+    }
+}
+
+string CreateDateTime()
+    => $"{DateTime.Now.Year.ToString().PadLeft(4, '0')}{DateTime.Now.Month.ToString().PadLeft(2, '0')}{DateTime.Now.Day.ToString().PadLeft(2, '0')}";
